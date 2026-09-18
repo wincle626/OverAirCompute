@@ -264,13 +264,77 @@ flowchart LR
     end
 ```
 
-Each per-operation diagram below instantiates this `y = H s + n` pipeline —
+### Symbol reference
+
+Every symbol used in the equations and diagrams:
+
+**Data and processing**
+
+| Symbol | Meaning |
+|---|---|
+| `dₖ` | raw data value contributed by agent `k` |
+| `K` | number of agents |
+| `φ(·)` | per-agent **pre-processing** (operation-specific), applied before transmit |
+| `gₖ = φ(dₖ)` | pre-processed value at agent `k` |
+| `μ, σ` | mean and standard deviation of `{gₖ}` across agents (known at the host) |
+| `sₖ = (gₖ − μ)/σ` | **standardised transmit symbol**, unit power `E\|sₖ\|² = 1` |
+| `ψ(·)` | host **post-processing** (operation-specific), applied to the recovered sum |
+| `f(d₁ … d_K)` | the operation's output value |
+
+**Antennas, precoding, converters**
+
+| Symbol | Meaning |
+|---|---|
+| `N_t` | transmit antennas per agent |
+| `N_r` | receive antennas per host |
+| `n_hosts` | number of hosts |
+| `R = n_hosts × N_r` | total receive antennas (joint aggregation dimension) |
+| `bₖ ∈ ℂ^{N_t}` | agent `k` transmit beamformer (**MRT** precoder) |
+| `Pₖ` | transmit power budget of agent `k`, constraint `‖bₖ‖² ≤ Pₖ` |
+| `MRT` | maximum-ratio transmission (transmit beamforming) |
+| `DAC` / `ADC` | digital-to-analog / analog-to-digital converter (bits + oversampling) |
+
+**Channel and received signal** (`y = H s + n`)
+
+| Symbol | Meaning |
+|---|---|
+| `Hₖ ∈ ℂ^{R×N_t}` | MIMO channel from agent `k` to all receive antennas (path loss · Rician fading) |
+| `hₖ = Hₖ bₖ ∈ ℂ^{R}` | **effective channel** column (physical channel through the precoder) |
+| `H = (h₁ … h_K) ∈ ℂ^{R×K}` | stacked effective channel matrix |
+| `s = (s₁ … s_K)ᵀ` | transmit-symbol vector |
+| `n ~ CN(0, σ²I)` | receiver noise vector (circularly-symmetric complex Gaussian) |
+| `σ²` | noise power per receive antenna (from bandwidth + noise figure) |
+| `y ∈ ℂ^{R}` | stacked received signal, `y = H s + n` |
+
+**Aggregation and recovery**
+
+| Symbol | Meaning |
+|---|---|
+| `m ∈ ℂ^{R}` | receive **aggregation combiner** (beamformer) |
+| `(·)ᴴ` | conjugate transpose (Hermitian); `mᴴhₖ` = combined effective gain of agent `k` |
+| `‖·‖` | Euclidean norm |
+| `η = minₖ Pₖ‖Hₖᴴm‖²` | **denoising factor**, set by the worst agent |
+| `ŝ_Σ = mᴴy / √η` | estimate of the wanted sum `Σₖ sₖ` |
+| `mᴴn / √η` | residual noise on the estimate |
+| `Σₖ gₖ = σ·ŝ_Σ + Kμ` | de-standardised aggregate, before `ψ` |
+
+**Operation-specific parameters** (per-operation diagrams)
+
+| Symbol | Meaning |
+|---|---|
+| `εₖ ∈ {+1, −1}` | per-agent sign (subtraction) |
+| `wₖ` | per-agent weight (weighted sum / average) |
+| `τ` | threshold (counting) |
+| `vₖ ∈ {0, 1}` | binary vote (majority) |
+| `ind(·)` | indicator: 1 if the condition holds, else 0 |
+| `one-hot(bin)` | length-`D` indicator selecting `dₖ`'s histogram bin (`D` = #bins) |
+| `p` | order of the p-norm surrogate (max / min approximation) |
+| `Σₖ`, `Πₖ` | sum / product over agents `k = 1..K` |
+
+Each per-operation diagram below instantiates the `y = H s + n` pipeline —
 filling in `φ` (what forms `sₖ`) and `ψ` (what the host does with `Σₖ sₖ`) — and
 **highlights the stage the operation stresses**: red = limiting/most-demanding,
 green = a feature it is easy on.
-
-Legend for every diagram: `dₖ` = agent data, `gₖ = φ(dₖ)`,
-`sₖ = (gₖ−μ)/σ` = transmit symbol, `y = H s + n`, `ŝ_Σ = mᴴy/√η ≈ Σₖ sₖ`.
 
 ### Natural-medium
 
