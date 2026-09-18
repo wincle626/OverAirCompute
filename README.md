@@ -227,52 +227,69 @@ print(res.summary())
 
 ## Operation principle diagrams
 
-Every operation runs through the **same MIMO AirComp datapath** built by this
-framework: each agent pre-processes with `φ`, standardises, and transmits through
-its DAC and MRT precoder over `N_t` antennas; the indoor channel superimposes all
-`K` transmissions (path loss + Rician fading + AWGN); the hosts combine across
-`n_hosts × N_r` antennas with aggregation vector `m` (worst-agent gain
-`η = minₖ Pₖ‖Hₖᴴm‖²`), sample with the ADC, and post-process with `ψ`.
+**Signal model.** Every operation reduces to one use of the classic linear model
+
+```
+y = H s + n
+```
+
+* `s = (s₁ … s_K)ᵀ` — transmit symbols, `sₖ = standardise(φ(dₖ))` with `E|sₖ|² = 1`.
+* `H = (h₁ … h_K) ∈ ℂ^{R×K}` — effective channel, column `hₖ = Hₖ bₖ` is the indoor
+  MIMO channel `Hₖ` (path loss · Rician fading) seen through the agent's MRT
+  precoder `bₖ` (`‖bₖ‖² ≤ Pₖ`); `R = n_hosts × N_r` receive antennas.
+* `n ~ CN(0, σ²I)` — receiver AWGN (`σ²` from bandwidth + noise figure).
+
+The host recovers the aggregate with combiner `m` and denoising `η`:
+
+```
+ŝ_Σ = mᴴ y / √η  =  Σₖ (mᴴhₖ / √η) sₖ  +  mᴴn / √η  →  Σₖ sₖ + noise
+```
+
+channel-inversion / MRT sets `mᴴhₖ = √η` for every `k` (with
+`η = minₖ Pₖ‖Hₖᴴm‖²`), so the wanted sum survives and only `mᴴn/√η` is left.
+De-standardising and applying `ψ` yields the result:
 
 ```mermaid
 flowchart LR
-    subgraph AGENT["Agent k  ·  N_t antennas  (× K agents)"]
-      s["data sₖ"] -->|"φ pre-process"| std["standardise<br/>unit power"]
-      std --> dac["DAC<br/>bits + oversampling"]
-      dac --> mrt["MRT precode bₖ<br/>‖bₖ‖² ≤ Pₖ"]
+    subgraph TX["Agents k = 1..K  ·  N_t antennas"]
+      d["data dₖ"] -->|"φ"| g["gₖ = φ(dₖ)"]
+      g -->|"standardise"| sk["sₖ = (gₖ − μ)/σ"]
+      sk -->|"DAC · MRT bₖ"| xk["send bₖ sₖ , ‖bₖ‖² ≤ Pₖ"]
     end
-    mrt --> air((("Σ over-the-air · K agents<br/>MIMO Hₖ · path loss<br/>Rician fading + AWGN")))
-    air --> rx
-    subgraph HOST["Hosts  ·  n_hosts × N_r antennas"]
-      rx["aggregation combiner m<br/>η = minₖ Pₖ‖Hₖᴴm‖²"] --> adc["ADC<br/>bits + oversampling"]
-      adc --> inv["de-standardise"]
-      inv --> psi["ψ post-process"]
+    xk --> mdl((("y = H s + n<br/>hₖ = Hₖ bₖ (fading · path loss)<br/>n ~ CN(0, σ²I)")))
+    mdl --> rx
+    subgraph RX["Hosts · n_hosts × N_r antennas"]
+      rx["combine · ADC<br/>ŝ_Σ = mᴴy / √η<br/>η = minₖ Pₖ‖Hₖᴴm‖²"] -->|"de-standardise"| sig["Σₖ gₖ = σ·ŝ_Σ + Kμ"]
+      sig -->|"ψ"| out["f(d₁ … d_K)"]
     end
-    psi --> out["f(s₁ … s_K)"]
 ```
 
-Each per-operation diagram below keeps that datapath and **highlights the system
-feature the operation stresses** — red = the limiting/most-demanding stage,
-green = a feature the operation is easy on.
+Each per-operation diagram below instantiates this `y = H s + n` pipeline —
+filling in `φ` (what forms `sₖ`) and `ψ` (what the host does with `Σₖ sₖ`) — and
+**highlights the stage the operation stresses**: red = limiting/most-demanding,
+green = a feature it is easy on.
+
+Legend for every diagram: `dₖ` = agent data, `gₖ = φ(dₖ)`,
+`sₖ = (gₖ−μ)/σ` = transmit symbol, `y = H s + n`, `ŝ_Σ = mᴴy/√η ≈ Σₖ sₖ`.
 
 ### Natural-medium
 
 ```mermaid
 flowchart LR
-    s["sₖ"] -->|"φ = sₖ"| tx["DAC + MRT · N_t ant.<br/>balanced range · light load"]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
-    rx -->|"ψ = identity"| r["Σₖ sₖ  ·  addition"]
+    d["dₖ"] -->|"φ = dₖ"| tx["sₖ = std(dₖ)<br/>DAC · MRT bₖ (N_t ant.)"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>residual = mᴴn/√η · limited by η"]
+    rx -->|"ψ = identity"| r["Σₖ dₖ  ·  addition"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class rx hot;
 ```
 
 ```mermaid
 flowchart LR
-    s["sₖ"] -->|"φ = εₖ·sₖ , εₖ = ±1"| tx["DAC + MRT · N_t ant.<br/>sign folded into φ"]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
-    rx -->|"ψ = identity"| r["Σₖ εₖ sₖ  ·  subtraction"]
+    d["dₖ"] -->|"φ = εₖ dₖ , εₖ = ±1"| tx["sₖ = std(εₖ dₖ)<br/>DAC · MRT bₖ (N_t ant.)"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>residual = mᴴn/√η · limited by η"]
+    rx -->|"ψ = identity"| r["Σₖ εₖ dₖ  ·  subtraction"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class rx hot;
 ```
@@ -281,50 +298,50 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    s["sₖ"] -->|"φ = sₖ"| tx["DAC + MRT · N_t ant."]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>ψ = ÷K also divides the noise"]
-    rx -->|"ψ = ·/K"| r["(1/K) Σₖ sₖ  ·  arithmetic mean"]
+    d["dₖ"] -->|"φ = dₖ"| tx["sₖ = std(dₖ)<br/>DAC · MRT bₖ (N_t ant.)"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>ψ = ÷K scales noise mᴴn/√η by 1/K"]
+    rx -->|"ψ = ·/K"| r["(1/K) Σₖ dₖ  ·  arithmetic mean"]
     classDef cool fill:#e9f6ea,stroke:#59A14F,color:#143;
     class rx cool;
 ```
 
 ```mermaid
 flowchart LR
-    s["sₖ"] -->|"φ = wₖ·sₖ"| tx["DAC + MRT · N_t ant.<br/>weight spread widens DAC range"]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
-    rx -->|"ψ = ·/Σwₖ"| r["Σ wₖsₖ / Σ wₖ  ·  weighted average"]
+    d["dₖ"] -->|"φ = wₖ dₖ"| tx["sₖ = std(wₖ dₖ) · DAC · MRT<br/>weight spread widens DAC range"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
+    rx -->|"ψ = ·/Σwₖ"| r["Σ wₖdₖ / Σ wₖ  ·  weighted average"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class tx hot;
 ```
 
 ```mermaid
 flowchart LR
-    s["sₖ > 0"] -->|"φ = ln sₖ"| tx["DAC + MRT · N_t ant.<br/>log compresses range → few bits OK"]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
-    rx -->|"ψ = exp(·/K)"| r["(Πₖ sₖ) ^ (1/K)  ·  geometric mean"]
+    d["dₖ > 0"] -->|"φ = ln dₖ"| tx["sₖ = std(ln dₖ) · DAC · MRT<br/>log compresses range → few bits OK"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
+    rx -->|"ψ = exp(·/K)"| r["(Πₖ dₖ) ^ (1/K)  ·  geometric mean"]
     classDef cool fill:#e9f6ea,stroke:#59A14F,color:#143;
     class tx cool;
 ```
 
 ```mermaid
 flowchart LR
-    s["sₖ"] -->|"φ = sₖ²"| tx["DAC + MRT · N_t ant.<br/>square widens range (largest agents)"]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>ψ = √· compresses residual error"]
-    rx -->|"ψ = √·"| r["√(Σₖ sₖ²)  ·  Euclidean norm"]
+    d["dₖ"] -->|"φ = dₖ²"| tx["sₖ = std(dₖ²) · DAC · MRT<br/>square widens range (largest agents)"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>ψ = √· compresses residual error"]
+    rx -->|"ψ = √·"| r["√(Σₖ dₖ²)  ·  Euclidean norm"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class tx hot;
 ```
 
 ```mermaid
 flowchart LR
-    s["sₖ"] -->|"φ = p(sₖ)"| tx["DAC + MRT · N_t ant.<br/>high-degree terms widen DAC/ADC range"]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
-    rx -->|"ψ = identity"| r["Σₖ p(sₖ)  ·  polynomial sum"]
+    d["dₖ"] -->|"φ = p(dₖ)"| tx["sₖ = std(p(dₖ)) · DAC · MRT<br/>high-degree terms widen DAC/ADC range"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
+    rx -->|"ψ = identity"| r["Σₖ p(dₖ)  ·  polynomial sum"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class tx hot;
 ```
@@ -333,9 +350,9 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    s["vote vₖ = 0/1"] -->|"φ = 2vₖ − 1"| tx["DAC + MRT · N_t ant."]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>vote margin vs SNR (antennas/power)"]
+    d["vote vₖ = 0/1"] -->|"φ = 2vₖ − 1"| tx["sₖ = std(2vₖ−1)<br/>DAC · MRT bₖ (N_t ant.)"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>sign flips when |mᴴn/√η| > margin"]
     rx -->|"ψ = (· > 0)"| r["majority bit  ·  flips near ties"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class rx hot;
@@ -343,40 +360,40 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    s["sₖ"] -->|"φ = ind(sₖ > τ)"| tx["DAC + MRT · N_t ant."]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>exact if error < ½ → more ant./power/bits"]
-    rx -->|"ψ = round(·)"| r["count(sₖ > τ)  ·  counting"]
+    d["dₖ"] -->|"φ = ind(dₖ > τ)"| tx["sₖ = std(ind)<br/>DAC · MRT bₖ (N_t ant.)"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>round exact if |mᴴn/√η| < ½"]
+    rx -->|"ψ = round(·)"| r["count(dₖ > τ)  ·  counting"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class rx hot;
 ```
 
 ```mermaid
 flowchart LR
-    s["sₖ"] -->|"φ = one-hot(bin)"| tx["DAC + MRT · N_t ant."]
-    tx --> air((("Σ over-the-air · per bin<br/>D channel uses, shared m")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>low-count bins are noise-sensitive"]
+    d["dₖ"] -->|"φ = one-hot(bin)"| tx["sₖ = std(one-hot)<br/>DAC · MRT bₖ (N_t ant.)"]
+    tx --> y((("y = H s + n  ·  per bin<br/>D channel uses, shared m<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η per bin (N_r ant.)<br/>low-count bins are noise-sensitive"]
     rx -->|"ψ = round(·)"| r["bin counts  ·  histogram"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
-    class air hot;
+    class y hot;
 ```
 
 ```mermaid
 flowchart LR
-    s["sₖ > 0"] -->|"φ = sₖ ^ p"| tx["DAC + MRT · N_t ant.<br/>sₖ^p → high PAPR → needs bits/headroom"]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>p sets the approximation error"]
-    rx -->|"ψ = · ^ (1/p)"| r["≈ maxₖ sₖ  ·  p-norm"]
+    d["dₖ > 0"] -->|"φ = dₖ ^ p"| tx["sₖ = std(dₖ^p) · DAC · MRT<br/>dₖ^p → high PAPR → needs bits/headroom"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>p sets the approximation error"]
+    rx -->|"ψ = · ^ (1/p)"| r["≈ maxₖ dₖ  ·  p-norm"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class tx hot;
 ```
 
 ```mermaid
 flowchart LR
-    s["sₖ > 0"] -->|"φ = sₖ ^ (−p)"| tx["DAC + MRT · N_t ant.<br/>widest dynamic range → most bits needed"]
-    tx --> air((("Σ over-the-air<br/>MIMO fading + AWGN")))
-    air --> rx["combiner m · N_r ant. + ADC<br/>p sets the approximation error"]
-    rx -->|"ψ = · ^ (−1/p)"| r["≈ minₖ sₖ  ·  p-norm"]
+    d["dₖ > 0"] -->|"φ = dₖ ^ (−p)"| tx["sₖ = std(dₖ^−p) · DAC · MRT<br/>widest dynamic range → most bits needed"]
+    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>p sets the approximation error"]
+    rx -->|"ψ = · ^ (−1/p)"| r["≈ minₖ dₖ  ·  p-norm"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
     class tx hot;
 ```
