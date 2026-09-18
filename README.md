@@ -250,7 +250,7 @@ channel-inversion / MRT sets `mᴴhₖ = √η` for every `k` (with
 De-standardising and applying `ψ` yields the result:
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph TX["Agents k = 1..K  ·  N_t antennas"]
       d["data dₖ"] -->|"φ"| g["gₖ = φ(dₖ)"]
       g -->|"standardise"| sk["sₖ = (gₖ − μ)/σ"]
@@ -339,9 +339,9 @@ green = a feature it is easy on.
 ### Natural-medium
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ"] -->|"φ = dₖ"| tx["sₖ = std(dₖ)<br/>DAC · MRT bₖ (N_t ant.)"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>residual = mᴴn/√η · limited by η"]
     rx -->|"ψ = identity"| r["Σₖ dₖ  ·  addition"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -349,9 +349,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ"] -->|"φ = εₖ dₖ , εₖ = ±1"| tx["sₖ = std(εₖ dₖ)<br/>DAC · MRT bₖ (N_t ant.)"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>residual = mᴴn/√η · limited by η"]
     rx -->|"ψ = identity"| r["Σₖ εₖ dₖ  ·  subtraction"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -361,9 +361,9 @@ flowchart LR
 ### Nomographic (pre-/post-processed)
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ"] -->|"φ = dₖ"| tx["sₖ = std(dₖ)<br/>DAC · MRT bₖ (N_t ant.)"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>ψ = ÷K scales noise mᴴn/√η by 1/K"]
     rx -->|"ψ = ·/K"| r["(1/K) Σₖ dₖ  ·  arithmetic mean"]
     classDef cool fill:#e9f6ea,stroke:#59A14F,color:#143;
@@ -371,9 +371,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ"] -->|"φ = wₖ dₖ"| tx["sₖ = std(wₖ dₖ) · DAC · MRT<br/>weight spread widens DAC range"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
     rx -->|"ψ = ·/Σwₖ"| r["Σ wₖdₖ / Σ wₖ  ·  weighted average"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -381,9 +381,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ > 0"] -->|"φ = ln dₖ"| tx["sₖ = std(ln dₖ) · DAC · MRT<br/>log compresses range → few bits OK"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
     rx -->|"ψ = exp(·/K)"| r["(Πₖ dₖ) ^ (1/K)  ·  geometric mean"]
     classDef cool fill:#e9f6ea,stroke:#59A14F,color:#143;
@@ -391,9 +391,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ"] -->|"φ = dₖ²"| tx["sₖ = std(dₖ²) · DAC · MRT<br/>square widens range (largest agents)"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>ψ = √· compresses residual error"]
     rx -->|"ψ = √·"| r["√(Σₖ dₖ²)  ·  Euclidean norm"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -401,9 +401,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ"] -->|"φ = p(dₖ)"| tx["sₖ = std(p(dₖ)) · DAC · MRT<br/>high-degree terms widen DAC/ADC range"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>η = minₖ Pₖ‖Hₖᴴm‖²"]
     rx -->|"ψ = identity"| r["Σₖ p(dₖ)  ·  polynomial sum"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -413,9 +413,9 @@ flowchart LR
 ### Advanced / approximated
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["vote vₖ = 0/1"] -->|"φ = 2vₖ − 1"| tx["sₖ = std(2vₖ−1)<br/>DAC · MRT bₖ (N_t ant.)"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>sign flips when |mᴴn/√η| > margin"]
     rx -->|"ψ = (· > 0)"| r["majority bit  ·  flips near ties"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -423,9 +423,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ"] -->|"φ = ind(dₖ > τ)"| tx["sₖ = std(ind)<br/>DAC · MRT bₖ (N_t ant.)"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>round exact if |mᴴn/√η| < ½"]
     rx -->|"ψ = round(·)"| r["count(dₖ > τ)  ·  counting"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -433,9 +433,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ"] -->|"φ = one-hot(bin)"| tx["sₖ = std(one-hot)<br/>DAC · MRT bₖ (N_t ant.)"]
-    tx --> y((("y = H s + n  ·  per bin<br/>D channel uses, shared m<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n<br/>per bin · D channel uses")))
     y --> rx["ŝ_Σ = mᴴy/√η per bin (N_r ant.)<br/>low-count bins are noise-sensitive"]
     rx -->|"ψ = round(·)"| r["bin counts  ·  histogram"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -443,9 +443,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ > 0"] -->|"φ = dₖ ^ p"| tx["sₖ = std(dₖ^p) · DAC · MRT<br/>dₖ^p → high PAPR → needs bits/headroom"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>p sets the approximation error"]
     rx -->|"ψ = · ^ (1/p)"| r["≈ maxₖ dₖ  ·  p-norm"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
@@ -453,9 +453,9 @@ flowchart LR
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     d["dₖ > 0"] -->|"φ = dₖ ^ (−p)"| tx["sₖ = std(dₖ^−p) · DAC · MRT<br/>widest dynamic range → most bits needed"]
-    tx --> y((("y = H s + n<br/>hₖ = Hₖbₖ · fading + path loss<br/>n ~ CN(0, σ²I)")))
+    tx --> y((("y = H s + n")))
     y --> rx["ŝ_Σ = mᴴy/√η (N_r ant.)<br/>p sets the approximation error"]
     rx -->|"ψ = · ^ (−1/p)"| r["≈ minₖ dₖ  ·  p-norm"]
     classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
