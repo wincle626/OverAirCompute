@@ -58,9 +58,21 @@ from .aggregation import (
     ChannelInversionAggregator,
     OptimizedBeamformingAggregator,
 )
+from .linalg import (
+    DEFAULT_LINALG_OPERATIONS,
+    CovarianceMatrix,
+    DistributedLeastSquares,
+    DistributedMatrixVector,
+    FederatedAveraging,
+    GramMatrix,
+    MatrixSum,
+    VectorMean,
+    VectorSum,
+)
 from .metrics import mse, nmse, nmse_db
 from .evaluation import (
     OperationResult,
+    aircomp_vector,
     evaluate_operation,
     evaluate_operations,
 )
@@ -95,6 +107,16 @@ __all__ = [
     "MinApprox",
     "DEFAULT_OPERATIONS",
     "standardize",
+    "VectorSum",
+    "VectorMean",
+    "FederatedAveraging",
+    "GramMatrix",
+    "CovarianceMatrix",
+    "MatrixSum",
+    "DistributedMatrixVector",
+    "DistributedLeastSquares",
+    "DEFAULT_LINALG_OPERATIONS",
+    "aircomp_vector",
     "Aggregator",
     "ChannelInversionAggregator",
     "OptimizedBeamformingAggregator",

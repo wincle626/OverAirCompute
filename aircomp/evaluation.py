@@ -71,6 +71,22 @@ def _aircomp_sum(aggregator, channel, design, g, tx_power, rng, converters=None)
     return std.invert_sum(t_hat, len(g))
 
 
+def aircomp_vector(aggregator, channel, design, G, tx_power, rng, converters=None):
+    """Aggregate a per-agent real matrix ``G`` (shape ``(K, D)``) over the air.
+
+    Returns the length-``D`` estimate of the column sums ``Σ_k G[k, :]`` using
+    ``D`` channel uses that share the same channel realisation and beamformer.
+    This is the building block for vector/matrix linear-algebra operations.
+    """
+    G = np.asarray(G, dtype=float)
+    return np.array(
+        [
+            _aircomp_sum(aggregator, channel, design, G[:, d], tx_power, rng, converters)
+            for d in range(G.shape[1])
+        ]
+    )
+
+
 def evaluate_operation(
     operation: Operation,
     config: SystemConfig,

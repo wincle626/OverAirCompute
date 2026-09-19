@@ -462,6 +462,158 @@ flowchart TD
     class tx hot;
 ```
 
+## Linear-algebra operations
+
+Most distributed linear algebra is a **sum over agents of a per-agent tensor**,
+which is exactly the AirComp primitive: each contribution is flattened into a
+real vector and aggregated with one channel use per entry (symmetric matrices
+send only the upper triangle). See [linalg.py](aircomp/linalg.py); these reuse
+the same evaluation harness as the scalar operations.
+
+| Operation | Per-agent contribution `φ` | Host `ψ` | Result |
+|---|---|---|---|
+| `VectorSum` / `VectorMean` | `xₖ ∈ ℝ^d` | identity / `÷K` | `Σ xₖ`, `(1/K)Σ xₖ` |
+| `FederatedAveraging` | `wₖ θₖ` | `÷ Σwₖ` | `Σ wₖθₖ / Σ wₖ` (FedAvg) |
+| `GramMatrix` | `triu(xₖ xₖᵀ)` | unpack | `Σ xₖ xₖᵀ` |
+| `CovarianceMatrix` | `triu(xₖ xₖᵀ)`, `xₖ` | `R/K − μμᵀ` | biased covariance |
+| `MatrixSum` | `vec(Mₖ)` | reshape | `Σ Mₖ` |
+| `DistributedMatrixVector` | `Aₖ x` | identity | `(Σ Aₖ) x` |
+| `DistributedLeastSquares` | `triu(xₖxₖᵀ)`, `xₖ yₖ` | solve `(XᵀX+λI)w=Xᵀy` | regression weights |
+
+Run the test bench (single-shot ops **and** an iterative distributed-PCA demo):
+
+```bash
+python examples/evaluate_linalg.py
+```
+
+At 40 agents / 2 hosts × 8 ant. / 20 dBm the vector and matrix aggregates reach
+about −90 dB NMSE (covariance/Gram ≈ −100 dB); least-squares recovers the weight
+vector at ≈ −97 dB through the matrix inverse; and **distributed PCA by power
+iteration** — each step computing `C v = (1/K) Σ_k xₖ(xₖᵀv)` over the air —
+recovers the top eigenvector with alignment `|⟨v̂, v*⟩| ≈ 1.0`, matching the
+noise-free algorithm.
+
+```python
+from aircomp import evaluate_operation, CovarianceMatrix, SystemConfig
+print(evaluate_operation(CovarianceMatrix(dim=5), SystemConfig(n_agents=40)).summary())
+```
+
+### Principle diagrams
+
+These operations use the **same `y = H s + n` model** as the scalar ones, just
+invoked `D` times: each agent forms a length-`D` real contribution
+`Gₖ = φ(dₖ)` (a flattened vector/matrix), the framework standardises every entry
+and transmits it over `D` channel uses that share one channel realisation and
+beamformer, and the host recovers `ĝ_Σ = Σₖ Gₖ ∈ ℝ^D` (via `aircomp_vector`)
+before `ψ` reshapes / normalises / solves. Symmetric matrices send only the
+upper triangle, so `D = d(d+1)/2` instead of `d²`.
+
+```mermaid
+flowchart TD
+    d["local data dₖ<br/>vector xₖ / matrix Mₖ / (features, label)"] -->|"φ"| g["contribution Gₖ = φ(dₖ) ∈ ℝ^D<br/>(flattened tensor)"]
+    g -->|"standardise each entry"| tx["D channel uses · shared H, m<br/>entry: y = H s + n"]
+    tx --> agg["recover ĝ_Σ = Σₖ Gₖ ∈ ℝ^D<br/>entry: ŝ_Σ = mᴴy/√η"]
+    agg -->|"ψ: reshape / normalise / solve"| out["vector or matrix result"]
+    classDef acc fill:#eef,stroke:#88a,color:#123;
+    class tx acc;
+```
+
+Per-operation principle and cost (`D` = channel uses per aggregation):
+
+* **Vector sum / mean** — element-wise aggregation; `D = d`; the error is the
+  scalar AirComp error on each entry, and the mean's `÷K` also scales the noise.
+* **Federated averaging** — a weighted vector sum then `÷Σwₖ` (the FedAvg model
+  step); the weight spread widens the DAC dynamic range as in the scalar
+  weighted average.
+* **Gram matrix** — each agent sends the upper triangle of its rank-one outer
+  product `xₖxₖᵀ`; `D = d(d+1)/2` grows quadratically with dimension; the host
+  rebuilds the symmetric sum.
+* **Covariance** — the Gram triangle **plus** the mean vector (`D = d(d+1)/2 + d`);
+  the host forms `R/K − μμᵀ`, and subtracting `μμᵀ` can amplify relative error
+  when the mean is large.
+* **Matrix sum** — plain vectorised aggregation over `D = r·c` entries.
+* **Distributed matrix-vector** — with a shared `x`, `(Σ Aₖ)x = Σ(Aₖx)`, so each
+  agent sends the length-`p` product and `D = p` **independent of the inner
+  dimension `q`**.
+* **Distributed least squares** — aggregates the normal-equation statistics
+  `XᵀX` (triangle) and `Xᵀy`, then the host solves `(XᵀX+λI)w = Xᵀy`; channel
+  noise on `XᵀX` propagates through the inverse, so accuracy tracks the
+  conditioning of `XᵀX`.
+* **Distributed PCA (power iteration)** — iterative: each round computes
+  `Cv = (1/K)Σₖ xₖ(xₖᵀv)` over the air (`D = d`) and renormalises; `T` rounds cost
+  `T` aggregations, and the renormalisation makes it converge to the top
+  eigenvector like the noise-free algorithm.
+
+```mermaid
+flowchart TD
+    d["dₖ = xₖ ∈ ℝ^d"] -->|"φ = xₖ"| g["Gₖ = xₖ · D = d"]
+    g --> agg["ĝ_Σ = Σₖ xₖ  (d channel uses)"]
+    agg -->|"ψ = identity  (÷K for mean)"| r["Σₖ xₖ  /  (1/K) Σₖ xₖ  ·  vector sum / mean"]
+```
+
+```mermaid
+flowchart TD
+    d["dₖ = θₖ ∈ ℝ^d (local model)"] -->|"φ = wₖ θₖ"| g["Gₖ = wₖ θₖ · D = d"]
+    g --> agg["ĝ_Σ = Σₖ wₖ θₖ  (d channel uses)"]
+    agg -->|"ψ = ÷ Σ wₖ"| r["Σ wₖθₖ / Σ wₖ  ·  federated averaging"]
+```
+
+```mermaid
+flowchart TD
+    d["dₖ = xₖ ∈ ℝ^d"] -->|"φ = triu(xₖ xₖᵀ)"| g["Gₖ = upper triangle<br/>D = d(d+1)/2 (grows as d²)"]
+    g --> agg["ĝ_Σ = Σₖ triu(xₖ xₖᵀ)"]
+    agg -->|"ψ = unpack symmetric"| r["Σₖ xₖ xₖᵀ  ·  Gram matrix"]
+    classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
+    class g hot;
+```
+
+```mermaid
+flowchart TD
+    d["dₖ = xₖ ∈ ℝ^d"] -->|"φ = ( triu(xₖ xₖᵀ) , xₖ )"| g["Gₖ · D = d(d+1)/2 + d"]
+    g --> agg["ĝ_Σ = ( Σ xₖ xₖᵀ , Σ xₖ )"]
+    agg -->|"ψ = R/K − μμᵀ"| r["biased covariance"]
+    classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
+    class g hot;
+```
+
+```mermaid
+flowchart TD
+    d["dₖ = Mₖ (r×c)"] -->|"φ = vec(Mₖ)"| g["Gₖ = vec(Mₖ) · D = r·c"]
+    g --> agg["ĝ_Σ = Σₖ vec(Mₖ)"]
+    agg -->|"ψ = reshape (r×c)"| r["Σₖ Mₖ  ·  matrix sum"]
+```
+
+```mermaid
+flowchart TD
+    d["dₖ = Aₖ (p×q)<br/>shared x ∈ ℝ^q"] -->|"φ = Aₖ x"| g["Gₖ = Aₖ x ∈ ℝ^p<br/>D = p (independent of q)"]
+    g --> agg["ĝ_Σ = Σₖ Aₖ x = (Σ Aₖ) x"]
+    agg -->|"ψ = identity"| r["(Σ Aₖ) x  ·  matrix-vector"]
+    classDef cool fill:#e9f6ea,stroke:#59A14F,color:#143;
+    class g cool;
+```
+
+```mermaid
+flowchart TD
+    d["dₖ = (xₖ ∈ ℝ^d , yₖ)"] -->|"φ = ( triu(xₖ xₖᵀ) , xₖ yₖ )"| g["Gₖ · D = d(d+1)/2 + d"]
+    g --> agg["ĝ_Σ = ( XᵀX , Xᵀy )"]
+    agg -->|"ψ = solve (XᵀX + λI) w = Xᵀy"| r["regression weights w<br/>noise amplified by cond(XᵀX)"]
+    classDef hot fill:#ffe8e6,stroke:#E15759,color:#611;
+    class r hot;
+```
+
+Distributed PCA is iterative — one over-the-air aggregation per power-iteration:
+
+```mermaid
+flowchart TD
+    v0["init v , ‖v‖ = 1"] --> a["each agent: aₖ = xₖᵀ v<br/>φ = aₖ xₖ  (D = d)"]
+    a --> agg["over the air: ĝ_Σ = Σₖ (xₖᵀv) xₖ = K · C v"]
+    agg -->|"v ← ĝ_Σ / ‖ĝ_Σ‖"| chk{"T iterations done?"}
+    chk -->|"no · next iteration"| a
+    chk -->|"yes"| out["top eigenvector v ≈ v*"]
+    classDef acc fill:#eef,stroke:#88a,color:#123;
+    class agg acc;
+```
+
 ## Package layout
 
 ```
@@ -472,15 +624,17 @@ aircomp/
 ├── nodes.py          # Agent and Host (ULA antenna geometry)
 ├── environment.py    # indoor room + random agent / ceiling host placement
 ├── channel.py        # indoor path-loss + Rician fading MIMO channel generator
-├── functions.py      # operation library (natural-medium / nomographic / advanced)
+├── functions.py      # scalar operation library (natural-medium / nomographic / advanced)
+├── linalg.py         # vector / matrix linear-algebra operations
 ├── aggregation.py    # AirComp receivers: beamforming + power control
 ├── metrics.py        # MSE / NMSE (linear and dB)
-├── evaluation.py     # per-operation accuracy benchmarking
+├── evaluation.py     # per-operation accuracy benchmarking + aircomp_vector helper
 └── simulator.py      # Monte-Carlo orchestration + parameter sweeps
 examples/
 ├── quickstart.py             # one scenario, one Monte-Carlo run
 ├── run_demo.py               # NMSE vs {tx power, #agents, #antennas}
-└── evaluate_operations.py    # accuracy of every supported operation
+├── evaluate_operations.py    # accuracy of every scalar operation
+└── evaluate_linalg.py        # vector/matrix ops + distributed PCA test bench
 ```
 
 ## Installation
